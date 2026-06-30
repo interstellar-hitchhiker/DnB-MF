@@ -1,5 +1,4 @@
 # DnB-MF
-DnB MeltFlow is a web broswer Butterchurn/MilkDrop radio visualiser
 
 DnB MeltFlow is a single-page browser visualiser built around Butterchurn, the WebGL version of the classic MilkDrop visual engine. It turns internet radio stations or local audio files into full-screen psychedelic visuals, with preset browsing, random preset switching, auto-morphing, brightness control, saturation control, and a clean hidden-interface mode for watching the visuals without distraction.
 
