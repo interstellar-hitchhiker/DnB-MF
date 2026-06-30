@@ -1,1 +1,758 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DnB MeltFlow — Butterchurn Radio Visualiser</title>
+  <style>
+    :root{
+      --bg:#05060b;
+      --panel:rgba(9,12,21,.84);
+      --panel2:rgba(14,19,33,.94);
+      --text:#edf5ff;
+      --muted:#a8b8d0;
+      --line:rgba(255,255,255,.14);
+      --accent:#7fe8ff;
+      --accent2:#b18cff;
+      --danger:#ff8ca4;
+      --ok:#9effbd;
+      --shadow:rgba(0,0,0,.55);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;overflow:hidden;background:#000;color:var(--text);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+    body::before{
+      content:"";position:fixed;inset:0;z-index:-2;background:
+      radial-gradient(circle at 20% 10%,rgba(127,232,255,.16),transparent 32%),
+      radial-gradient(circle at 84% 20%,rgba(177,140,255,.16),transparent 34%),
+      linear-gradient(135deg,#05060b,#0a0d18 55%,#020308);
+    }
+
+    #stage{position:fixed;inset:0;background:#000}
+    #visualCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;background:#000;filter:brightness(.86) saturate(1.08) contrast(.96)}
+    #softener{
+      position:absolute;inset:0;pointer-events:none;background:
+      radial-gradient(circle at 50% 50%,transparent 42%,rgba(0,0,0,.18) 100%),
+      rgba(0,0,0,.03);
+      opacity:.8;
+    }
+
+    .panel{
+      position:fixed;left:18px;top:18px;width:min(430px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto;
+      border:1px solid var(--line);border-radius:24px;background:var(--panel);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+      box-shadow:0 26px 90px var(--shadow);padding:18px;z-index:10;transition:opacity .22s ease,transform .22s ease;
+    }
+    .panel.hidden{opacity:0;transform:translateY(8px);pointer-events:none}
+    body.presentation-mode, body.presentation-mode *{cursor:none !important}
+    h1{margin:0 0 7px;font-size:30px;line-height:.95;letter-spacing:-.05em}
+    .sub{margin:0 0 15px;color:var(--muted);font-size:13px;line-height:1.46}
+    .section{border-top:1px solid rgba(255,255,255,.09);padding-top:13px;margin-top:13px}
+    .section:first-of-type{border-top:0;margin-top:0;padding-top:0}
+    .label{display:block;margin:0 0 7px;color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+    .grid{display:grid;gap:9px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+    button,select,input{font:inherit;color:var(--text)}
+    button{
+      width:100%;border:1px solid var(--line);border-radius:14px;padding:10px 11px;background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.045));
+      cursor:pointer;transition:transform .12s ease,border-color .12s ease,background .12s ease,opacity .12s ease;box-shadow:0 10px 22px rgba(0,0,0,.18)
+    }
+    button:hover:not(:disabled){transform:translateY(-1px);border-color:rgba(127,232,255,.55)}
+    button:active:not(:disabled){transform:translateY(1px)}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    button.primary{background:linear-gradient(180deg,rgba(127,232,255,.28),rgba(58,130,255,.13));border-color:rgba(127,232,255,.5)}
+    button.secondary{background:linear-gradient(180deg,rgba(177,140,255,.24),rgba(177,140,255,.08));border-color:rgba(177,140,255,.44)}
+    button.danger{background:linear-gradient(180deg,rgba(255,140,164,.22),rgba(255,140,164,.08));border-color:rgba(255,140,164,.44)}
+    select,input[type=file]{
+      width:100%;border:1px solid var(--line);border-radius:14px;background:#0b1020;color:#eef5ff;padding:10px 11px;outline:none;
+    }
+    select option{background:#0b1020;color:#eef5ff}
+    input[type=range]{width:100%;accent-color:var(--accent)}
+    .control{display:grid;gap:5px}
+    .controlHead{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px}
+    .value{color:var(--text);font-variant-numeric:tabular-nums}
+    .status{
+      margin-top:10px;border:1px solid rgba(255,255,255,.09);border-radius:16px;background:rgba(0,0,0,.24);padding:10px;color:var(--muted);
+      white-space:pre-wrap;font-size:12px;line-height:1.42;min-height:78px
+    }
+    .mini{
+      position:fixed;left:50%;top:14px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;justify-content:center;z-index:9;
+      border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(5,7,13,.62);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      padding:9px 13px;opacity:0;pointer-events:none;transition:opacity .32s ease
+    }
+    .mini.show{opacity:1}
+    .mini span{color:var(--muted);font-size:12px;max-width:min(760px,88vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .help{
+      position:fixed;right:18px;bottom:18px;z-index:8;max-width:min(430px,calc(100vw - 36px));border:1px solid rgba(255,255,255,.12);border-radius:18px;
+      background:rgba(5,7,13,.56);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding:11px 13px;color:var(--muted);font-size:12px;line-height:1.45;
+      transition:opacity .18s ease
+    }
+    .help.hidden{opacity:0;pointer-events:none}
+    kbd{display:inline-block;min-width:1.4em;text-align:center;padding:1px 5px;border:1px solid rgba(255,255,255,.16);border-bottom-width:2px;border-radius:6px;background:rgba(255,255,255,.08);color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px}
+    audio{width:100%;height:34px;margin-top:8px;display:none}
+    @media(max-width:740px){
+      .panel{left:10px;top:10px;width:calc(100vw - 20px);max-height:calc(100vh - 20px);padding:14px}
+      .row,.row3{grid-template-columns:1fr}
+      .help{display:none}
+      .mini{left:10px;right:10px;top:10px;transform:none}
+      .mini span{max-width:100%;font-size:11px}
+    }
+  </style>
+
+  <script src="https://unpkg.com/lodash"></script>
+  <script src="https://unpkg.com/butterchurn-presets@3.0.0-beta.4/dist/base.min.js"></script>
+  <script src="https://unpkg.com/butterchurn-presets@3.0.0-beta.4/dist/extra.min.js"></script>
+</head>
+<body>
+  <main id="stage" aria-label="Meltflow visual stage">
+    <canvas id="visualCanvas"></canvas>
+    <div id="softener"></div>
+  </main>
+
+  <aside id="panel" class="panel">
+    <h1>DnB MeltFlow</h1>
+    <p class="sub">A Butterchurn / MilkDrop-style radio visualiser with DnB, ambient stations, local-file mode, fullscreen hiding controls, preset browsing, and slow auto-morphing.</p>
+
+    <section class="section">
+      <span class="label">Audio source</span>
+      <div class="grid">
+        <select id="sourceSelect">
+          <option value="bassdrive">Bassdrive — drum &amp; bass</option>
+          <option value="dronezone">SomaFM Drone Zone — ambient</option>
+          <option value="deepspaceone">SomaFM Deep Space One — deep space</option>
+          <option value="groovesalad">SomaFM Groove Salad — downtempo</option>
+          <option value="thetrip">SomaFM The Trip — psychedelic electronic</option>
+          <option value="local">Local audio file — best reaction</option>
+          <option value="silent">Silent visuals only</option>
+        </select>
+        <input id="fileInput" type="file" accept="audio/*" style="display:none" />
+        <div class="row">
+          <button id="playBtn" class="primary">Play</button>
+          <button id="stopBtn" class="danger">Stop</button>
+        </div>
+        <audio id="radioAudio" controls></audio>
+        <audio id="localAudio" controls></audio>
+      </div>
+    </section>
+
+    <section class="section">
+      <span class="label">Presets</span>
+      <div class="grid">
+        <select id="vibeSelect">
+          <option value="all">All presets</option>
+          <option value="space">Space / nebula</option>
+          <option value="tunnel">Tunnel / spiral</option>
+          <option value="liquid">Liquid / flow</option>
+          <option value="calm">Softer names</option>
+          <option value="psy">Psychedelic / dense</option>
+        </select>
+        <select id="presetSelect"></select>
+        <div class="row3">
+          <button id="randomPresetBtn" class="secondary">Random</button>
+          <button id="nextPresetBtn">Next</button>
+          <button id="autoBtn" class="primary">Auto morph</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <span class="label">Look and safety</span>
+      <div class="grid">
+        <div class="control">
+          <div class="controlHead"><span>Brightness limit</span><span class="value" id="brightVal">82</span></div>
+          <input id="brightSlider" type="range" min="40" max="115" value="82" />
+        </div>
+        <div class="control">
+          <div class="controlHead"><span>Saturation</span><span class="value" id="satVal">112</span></div>
+          <input id="satSlider" type="range" min="40" max="160" value="112" />
+        </div>
+        <div class="control">
+          <div class="controlHead"><span>Soft dim overlay</span><span class="value" id="dimVal">14</span></div>
+          <input id="dimSlider" type="range" min="0" max="55" value="14" />
+        </div>
+        <div class="control">
+          <div class="controlHead"><span>Auto interval</span><span class="value" id="intervalVal">32s</span></div>
+          <input id="intervalSlider" type="range" min="8" max="90" value="32" />
+        </div>
+        <div class="control">
+          <div class="controlHead"><span>Morph blend</span><span class="value" id="blendVal">5s</span></div>
+          <input id="blendSlider" type="range" min="1" max="12" value="5" />
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <span class="label">Screen</span>
+      <div class="row3">
+        <button id="cleanBtn" class="primary">Hide controls</button>
+        <button id="fullBtn" class="secondary">Fullscreen</button>
+        <button id="showAudioBtn">Show player</button>
+      </div>
+      <div id="status" class="status">Loading Butterchurn module...</div>
+    </section>
+  </aside>
+
+  <div id="mini" class="mini">
+    <span id="miniText"><kbd>Space</kbd> play/pause · <kbd>F</kbd> fullscreen · <kbd>R</kbd> random · <kbd>N</kbd> next · <kbd>A</kbd> auto morph · <kbd>C</kbd> show controls</span>
+  </div>
+
+  <div id="help" class="help">
+    <kbd>Space</kbd> play/pause · <kbd>C</kbd> hide/show controls · <kbd>F</kbd> fullscreen · <kbd>R</kbd> random · <kbd>N</kbd> next · <kbd>A</kbd> auto morph · move mouse/tap to show controls again.
+  </div>
+
+  <script type="module">
+    const els = {
+      canvas: document.getElementById('visualCanvas'),
+      softener: document.getElementById('softener'),
+      panel: document.getElementById('panel'),
+      mini: document.getElementById('mini'),
+      miniText: document.getElementById('miniText'),
+      help: document.getElementById('help'),
+      status: document.getElementById('status'),
+      sourceSelect: document.getElementById('sourceSelect'),
+      fileInput: document.getElementById('fileInput'),
+      playBtn: document.getElementById('playBtn'),
+      stopBtn: document.getElementById('stopBtn'),
+      radioAudio: document.getElementById('radioAudio'),
+      localAudio: document.getElementById('localAudio'),
+      vibeSelect: document.getElementById('vibeSelect'),
+      presetSelect: document.getElementById('presetSelect'),
+      randomPresetBtn: document.getElementById('randomPresetBtn'),
+      nextPresetBtn: document.getElementById('nextPresetBtn'),
+      autoBtn: document.getElementById('autoBtn'),
+      cleanBtn: document.getElementById('cleanBtn'),
+      fullBtn: document.getElementById('fullBtn'),
+      showAudioBtn: document.getElementById('showAudioBtn'),
+      brightSlider: document.getElementById('brightSlider'),
+      satSlider: document.getElementById('satSlider'),
+      dimSlider: document.getElementById('dimSlider'),
+      intervalSlider: document.getElementById('intervalSlider'),
+      blendSlider: document.getElementById('blendSlider'),
+      brightVal: document.getElementById('brightVal'),
+      satVal: document.getElementById('satVal'),
+      dimVal: document.getElementById('dimVal'),
+      intervalVal: document.getElementById('intervalVal'),
+      blendVal: document.getElementById('blendVal')
+    };
+
+    const STREAMS = {
+      bassdrive: {
+        label: 'Bassdrive',
+        urls: ['https://bassdrive.radioca.st/stream', 'https://bassdrive.radioca.st/;stream.mp3']
+      },
+      dronezone: {
+        label: 'SomaFM Drone Zone',
+        urls: ['https://ice5.somafm.com/dronezone-128-mp3', 'https://ice3.somafm.com/dronezone-128-mp3', 'https://ice.somafm.com/dronezone']
+      },
+      deepspaceone: {
+        label: 'SomaFM Deep Space One',
+        urls: ['https://ice5.somafm.com/deepspaceone-128-mp3', 'https://ice3.somafm.com/deepspaceone-128-mp3', 'https://ice.somafm.com/deepspaceone']
+      },
+      groovesalad: {
+        label: 'SomaFM Groove Salad',
+        urls: ['https://ice.somafm.com/groovesalad', 'https://ice2.somafm.com/groovesalad-128-mp3', 'https://ice5.somafm.com/groovesalad-128-mp3']
+      },
+      thetrip: {
+        label: 'SomaFM The Trip',
+        urls: ['https://ice.somafm.com/thetrip', 'https://ice4.somafm.com/thetrip-128-mp3']
+      }
+    };
+
+    const START_PRESET_HINT = 'shadow harlequin lovely shiny squares liquid starburst rm mixed unchained royal nova';
+    const START_PRESET_TOKENS = START_PRESET_HINT.split(/\s+/).filter(Boolean);
+
+    const state = {
+      butterchurn: null,
+      visualizer: null,
+      presets: {},
+      allKeys: [],
+      filteredKeys: [],
+      presetIndex: 0,
+      currentPreset: '',
+      audioContext: null,
+      mediaSource: null,
+      gainNode: null,
+      renderOn: false,
+      clean: false,
+      auto: false,
+      autoTimer: null,
+      localUrl: null,
+      radioUrlIndex: 0,
+      source: 'bassdrive',
+      playing: false,
+      audioBarVisible: false,
+      overlayTimer: null,
+      revealBlockUntil: 0
+    };
+
+    function status(text) {
+      els.status.textContent = text;
+    }
+
+    function diagnostic() {
+      return [
+        `Butterchurn: ${Boolean(state.butterchurn)}`,
+        `Visualizer: ${Boolean(state.visualizer)}`,
+        `Presets: ${state.allKeys.length}`,
+        `WebGL2: ${Boolean(document.createElement('canvas').getContext('webgl2'))}`,
+        `Audio source: ${labelForSource(state.source)}`
+      ].join('\n');
+    }
+
+    function labelForSource(value) {
+      if (value === 'local') return 'Local audio';
+      if (value === 'silent') return 'Silent visuals';
+      return STREAMS[value]?.label || value;
+    }
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      const w = Math.max(640, Math.floor(innerWidth * dpr));
+      const h = Math.max(360, Math.floor(innerHeight * dpr));
+      if (els.canvas.width !== w || els.canvas.height !== h) {
+        els.canvas.width = w;
+        els.canvas.height = h;
+        if (state.visualizer) state.visualizer.setRendererSize(w, h);
+      }
+    }
+
+    async function ensureButterchurn() {
+      resizeCanvas();
+      if (!state.butterchurn) {
+        try {
+          const mod = await import('https://unpkg.com/butterchurn@3.0.0-beta.5/dist/butterchurn.js');
+          state.butterchurn = mod.default || mod;
+        } catch (err) {
+          console.error(err);
+          status('Butterchurn module failed to load.\n\n' + String(err));
+          return false;
+        }
+      }
+
+      if (!state.audioContext) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        state.audioContext = new Ctx();
+      }
+      if (state.audioContext.state === 'suspended') await state.audioContext.resume();
+
+      if (!state.allKeys.length) {
+        state.presets = {};
+        if (window.base && window.base.default) Object.assign(state.presets, window.base.default);
+        if (window.extra && window.extra.default) Object.assign(state.presets, window.extra.default);
+        state.allKeys = Object.keys(state.presets).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        applyVibeFilter(false);
+      }
+
+      if (!state.allKeys.length) {
+        status('Preset packs did not load.\n\n' + diagnostic());
+        return false;
+      }
+
+      if (!state.visualizer) {
+        try {
+          state.visualizer = state.butterchurn.createVisualizer(state.audioContext, els.canvas, {
+            width: els.canvas.width,
+            height: els.canvas.height,
+            pixelRatio: 1,
+            textureRatio: 1
+          });
+          if (!loadPreferredPreset(0)) loadRandomPreset(0);
+          startRenderLoop();
+        } catch (err) {
+          console.error(err);
+          status('Butterchurn visualizer could not initialise.\n\n' + String(err) + '\n\n' + diagnostic());
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function applyVibeFilter(keepCurrent = true) {
+      const vibe = els.vibeSelect.value;
+      const tests = {
+        all: [/./i],
+        space: [/space/i,/star/i,/nebula/i,/cosm/i,/galax/i,/heaven/i,/void/i,/universe/i,/moon/i],
+        tunnel: [/tunnel/i,/spiral/i,/vortex/i,/warp/i,/worm/i,/tube/i,/hole/i,/depth/i],
+        liquid: [/liquid/i,/water/i,/flow/i,/wave/i,/plasma/i,/smoke/i,/river/i,/ocean/i],
+        calm: [/dream/i,/soft/i,/slow/i,/calm/i,/quiet/i,/ambient/i,/night/i,/cloud/i,/angel/i],
+        psy: [/psy/i,/trip/i,/acid/i,/fractal/i,/kaleid/i,/escher/i,/mad/i,/chaos/i,/morph/i]
+      }[vibe] || [/./i];
+
+      state.filteredKeys = state.allKeys.filter(name => tests.some(rx => rx.test(name)));
+      if (!state.filteredKeys.length) state.filteredKeys = state.allKeys.slice();
+
+      els.presetSelect.innerHTML = '';
+      state.filteredKeys.forEach((name, i) => {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = name.length > 80 ? name.slice(0, 80) + '…' : name;
+        els.presetSelect.appendChild(opt);
+      });
+
+      if (keepCurrent && state.currentPreset) {
+        const idx = state.filteredKeys.indexOf(state.currentPreset);
+        if (idx >= 0) {
+          state.presetIndex = idx;
+          els.presetSelect.value = String(idx);
+        } else {
+          state.presetIndex = 0;
+          els.presetSelect.value = '0';
+        }
+      }
+    }
+
+    function loadPresetByIndex(index, blend = getBlend()) {
+      if (!state.visualizer || !state.filteredKeys.length) return;
+      state.presetIndex = ((index % state.filteredKeys.length) + state.filteredKeys.length) % state.filteredKeys.length;
+      const name = state.filteredKeys[state.presetIndex];
+      state.currentPreset = name;
+      els.presetSelect.value = String(state.presetIndex);
+      state.visualizer.loadPreset(state.presets[name], blend);
+      status(`Preset: ${name}\n${diagnostic()}`);
+    }
+
+    function loadPreferredPreset(blend = 0) {
+      if (!state.visualizer || !state.allKeys.length) return false;
+
+      // Try to start on the user's favourite preset. The exact preset title may vary
+      // slightly across Butterchurn preset packs, so this uses a token score instead
+      // of one brittle hard-coded full string.
+      const candidates = state.allKeys.map((name, index) => {
+        const lower = name.toLowerCase();
+        let score = 0;
+        for (const token of START_PRESET_TOKENS) {
+          if (lower.includes(token)) score += token.length >= 6 ? 3 : 2;
+        }
+        if (lower.includes('shadow harlequin')) score += 12;
+        if (lower.includes('lovely shiny squares')) score += 12;
+        if (lower.includes('liquid starburst')) score += 10;
+        if (lower.includes('unchained')) score += 8;
+        if (lower.includes('royal nova')) score += 8;
+        return { name, index, score };
+      }).sort((a, b) => b.score - a.score);
+
+      const best = candidates[0];
+      if (!best || best.score < 10) return false;
+
+      // Make sure the visible dropdown contains the chosen preset even if the user
+      // later filters by vibe/category.
+      els.vibeSelect.value = 'all';
+      applyVibeFilter(false);
+      const filteredIndex = state.filteredKeys.indexOf(best.name);
+      if (filteredIndex >= 0) {
+        loadPresetByIndex(filteredIndex, blend);
+      } else {
+        state.filteredKeys = state.allKeys.slice();
+        applyVibeFilter(false);
+        loadPresetByIndex(best.index, blend);
+      }
+      status(`Starting preset:\n${best.name}\n\n${diagnostic()}`);
+      return true;
+    }
+
+    function loadRandomPreset(blend = getBlend()) {
+      if (!state.filteredKeys.length) return;
+      loadPresetByIndex(Math.floor(Math.random() * state.filteredKeys.length), blend);
+    }
+
+    function getBlend() {
+      return Number(els.blendSlider.value) || 5;
+    }
+
+    function startRenderLoop() {
+      if (state.renderOn) return;
+      state.renderOn = true;
+      const frame = () => {
+        if (!state.renderOn) return;
+        try {
+          resizeCanvas();
+          if (state.visualizer) state.visualizer.render();
+        } catch (err) {
+          console.error(err);
+          status('Render error:\n' + String(err));
+          state.renderOn = false;
+          return;
+        }
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    }
+
+    function applyLook() {
+      const bright = Number(els.brightSlider.value);
+      const sat = Number(els.satSlider.value);
+      const dim = Number(els.dimSlider.value);
+      els.canvas.style.filter = `brightness(${bright/100}) saturate(${sat/100}) contrast(.96)`;
+      els.softener.style.background = `radial-gradient(circle at 50% 50%, transparent 42%, rgba(0,0,0,${0.14 + dim/180}) 100%), rgba(0,0,0,${dim/220})`;
+      els.brightVal.textContent = String(bright);
+      els.satVal.textContent = String(sat);
+      els.dimVal.textContent = String(dim);
+      els.intervalVal.textContent = `${els.intervalSlider.value}s`;
+      els.blendVal.textContent = `${els.blendSlider.value}s`;
+    }
+
+    function showMiniOverlayBriefly(duration = 5000) {
+      clearTimeout(state.overlayTimer);
+      els.miniText.innerHTML = '<kbd>Space</kbd> play/pause · <kbd>F</kbd> fullscreen · <kbd>R</kbd> random · <kbd>N</kbd> next · <kbd>A</kbd> auto morph · <kbd>C</kbd> show controls';
+      els.mini.classList.add('show');
+      state.overlayTimer = setTimeout(() => {
+        if (state.clean) els.mini.classList.remove('show');
+      }, duration);
+    }
+
+    function setClean(clean) {
+      state.clean = clean;
+      document.body.classList.toggle('presentation-mode', clean);
+      els.panel.classList.toggle('hidden', clean);
+      els.help.classList.toggle('hidden', clean);
+      els.cleanBtn.textContent = clean ? 'Show controls' : 'Hide controls';
+      if (clean) {
+        state.revealBlockUntil = performance.now() + 900;
+        showMiniOverlayBriefly(5000);
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen?.().catch(() => {});
+        }
+      } else {
+        clearTimeout(state.overlayTimer);
+        els.mini.classList.remove('show');
+      }
+    }
+
+    function showControlsTemporarily() {
+      if (!state.clean) return;
+      if (performance.now() < state.revealBlockUntil) return;
+      setClean(false);
+    }
+
+    async function setAudioSource() {
+      state.source = els.sourceSelect.value;
+      state.radioUrlIndex = 0;
+      els.fileInput.style.display = state.source === 'local' ? 'block' : 'none';
+      els.radioAudio.style.display = state.audioBarVisible && !['local','silent'].includes(state.source) ? 'block' : 'none';
+      els.localAudio.style.display = state.audioBarVisible && state.source === 'local' ? 'block' : 'none';
+      els.radioAudio.pause();
+      els.localAudio.pause();
+      state.playing = false;
+      els.playBtn.textContent = 'Play';
+
+      if (state.source === 'local') {
+        status('Local file mode selected. Choose an audio file, then press Play.\nLocal files give the best real audio reaction.');
+      } else if (state.source === 'silent') {
+        status('Silent visuals selected. No audio will play.\n' + diagnostic());
+      } else {
+        const station = STREAMS[state.source];
+        els.radioAudio.removeAttribute('crossorigin');
+        els.radioAudio.src = station.urls[0];
+        els.radioAudio.load();
+        status(`${station.label} selected. Press Play.\nRadio plays directly; visual motion comes from Butterchurn presets.`);
+      }
+    }
+
+    async function connectLocalAudioIfNeeded() {
+      if (!state.localAudio.src) return false;
+      await ensureButterchurn();
+      if (!state.mediaSource) {
+        state.mediaSource = state.audioContext.createMediaElementSource(els.localAudio);
+        state.gainNode = state.audioContext.createGain();
+        state.gainNode.gain.value = 1;
+        state.mediaSource.connect(state.gainNode);
+        state.gainNode.connect(state.audioContext.destination);
+        state.visualizer.connectAudio(state.gainNode);
+      }
+      return true;
+    }
+
+    async function playSelected() {
+      const ok = await ensureButterchurn();
+      if (!ok) return;
+
+      if (state.source === 'silent') {
+        startRenderLoop();
+        status('Silent visual mode running.\n' + diagnostic());
+        return;
+      }
+
+      if (state.source === 'local') {
+        if (!els.localAudio.src) {
+          status('Choose a local audio file first.\n' + diagnostic());
+          return;
+        }
+        try {
+          await connectLocalAudioIfNeeded();
+          await els.localAudio.play();
+          state.playing = true;
+          els.playBtn.textContent = 'Pause';
+          status('Local audio connected to Butterchurn.\nThis is the strongest audio-reactive mode.\n' + diagnostic());
+        } catch (err) {
+          console.error(err);
+          status('Local audio could not play/connect.\n\n' + String(err));
+        }
+        return;
+      }
+
+      try {
+        els.localAudio.pause();
+        const station = STREAMS[state.source];
+        if (!els.radioAudio.src) {
+          els.radioAudio.src = station.urls[0];
+          els.radioAudio.load();
+        }
+        await els.radioAudio.play();
+        state.playing = true;
+        els.playBtn.textContent = 'Pause';
+        status(`Playing ${station.label}.\nRadio is playing directly; presets animate even when stream analysis is blocked.\n${diagnostic()}`);
+      } catch (err) {
+        console.error(err);
+        status('Radio playback failed. Trying fallback stream if available...\n' + String(err));
+        tryNextRadioUrl();
+      }
+    }
+
+    async function tryNextRadioUrl() {
+      const station = STREAMS[state.source];
+      if (!station) return;
+      state.radioUrlIndex++;
+      if (state.radioUrlIndex >= station.urls.length) {
+        status(`All stream URLs failed for ${station.label}. Try another station.\n` + diagnostic());
+        return;
+      }
+      try {
+        els.radioAudio.src = station.urls[state.radioUrlIndex];
+        els.radioAudio.load();
+        await els.radioAudio.play();
+        state.playing = true;
+        els.playBtn.textContent = 'Pause';
+        status(`Switched to fallback stream for ${station.label}.\n${diagnostic()}`);
+      } catch (err) {
+        console.warn(err);
+        tryNextRadioUrl();
+      }
+    }
+
+    function pauseAll() {
+      els.radioAudio.pause();
+      els.localAudio.pause();
+      state.playing = false;
+      els.playBtn.textContent = 'Play';
+      status('Paused audio. Visuals continue.\n' + diagnostic());
+    }
+
+    function stopAll() {
+      els.radioAudio.pause();
+      els.localAudio.pause();
+      try { els.radioAudio.currentTime = 0; } catch(_) {}
+      try { els.localAudio.currentTime = 0; } catch(_) {}
+      state.playing = false;
+      els.playBtn.textContent = 'Play';
+      status('Stopped.\n' + diagnostic());
+    }
+
+    async function toggleAuto() {
+      state.auto = !state.auto;
+      clearInterval(state.autoTimer);
+      state.autoTimer = null;
+      if (state.auto) {
+        const ok = await ensureButterchurn();
+        if (!ok) {
+          state.auto = false;
+        } else {
+          loadRandomPreset(0.7);
+          state.autoTimer = setInterval(() => loadRandomPreset(getBlend()), Number(els.intervalSlider.value) * 1000);
+        }
+      }
+      els.autoBtn.textContent = state.auto ? 'Stop auto' : 'Auto morph';
+      els.autoBtn.classList.toggle('danger', state.auto);
+      els.autoBtn.classList.toggle('primary', !state.auto);
+      status((state.auto ? `Auto morph is on: changing presets every ${els.intervalSlider.value}s with a ${getBlend()}s blend.` : 'Auto morph is off.') + '\n' + diagnostic());
+    }
+
+    function restartAutoIfNeeded() {
+      if (!state.auto) return;
+      clearInterval(state.autoTimer);
+      state.autoTimer = setInterval(() => loadRandomPreset(getBlend()), Number(els.intervalSlider.value) * 1000);
+      status(`Auto morph updated: every ${els.intervalSlider.value}s with a ${getBlend()}s blend.\n` + diagnostic());
+    }
+
+    async function initApp() {
+      bind();
+      applyLook();
+      await ensureButterchurn();
+      await setAudioSource();
+      status('Ready. Pick a station, press Play, then Hide controls or Fullscreen.\n' + diagnostic());
+    }
+
+    function bind() {
+      window.addEventListener('resize', resizeCanvas);
+      ['input','change'].forEach(evt => {
+        els.brightSlider.addEventListener(evt, applyLook);
+        els.satSlider.addEventListener(evt, applyLook);
+        els.dimSlider.addEventListener(evt, applyLook);
+        els.intervalSlider.addEventListener(evt, () => { applyLook(); restartAutoIfNeeded(); });
+        els.blendSlider.addEventListener(evt, applyLook);
+      });
+
+      els.sourceSelect.addEventListener('change', setAudioSource);
+      els.fileInput.addEventListener('change', () => {
+        if (state.localUrl) URL.revokeObjectURL(state.localUrl);
+        const file = els.fileInput.files && els.fileInput.files[0];
+        if (!file) return;
+        state.localUrl = URL.createObjectURL(file);
+        els.localAudio.src = state.localUrl;
+        els.localAudio.load();
+        status('Local file loaded. Press Play.\n' + diagnostic());
+      });
+
+      els.playBtn.addEventListener('click', async () => {
+        if (state.playing) pauseAll(); else await playSelected();
+      });
+      els.stopBtn.addEventListener('click', stopAll);
+      els.radioAudio.addEventListener('error', tryNextRadioUrl);
+
+      els.vibeSelect.addEventListener('change', async () => {
+        await ensureButterchurn();
+        applyVibeFilter(false);
+        loadRandomPreset(getBlend());
+      });
+      els.presetSelect.addEventListener('change', () => loadPresetByIndex(Number(els.presetSelect.value), getBlend()));
+      els.randomPresetBtn.addEventListener('click', async () => { await ensureButterchurn(); loadRandomPreset(getBlend()); });
+      els.nextPresetBtn.addEventListener('click', async () => { await ensureButterchurn(); loadPresetByIndex(state.presetIndex + 1, getBlend()); });
+      els.autoBtn.addEventListener('click', () => toggleAuto());
+
+      els.cleanBtn.addEventListener('click', () => setClean(!state.clean));
+      els.fullBtn.addEventListener('click', () => {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+        else document.exitFullscreen?.();
+      });
+      els.showAudioBtn.addEventListener('click', () => {
+        state.audioBarVisible = !state.audioBarVisible;
+        els.showAudioBtn.textContent = state.audioBarVisible ? 'Hide player' : 'Show player';
+        els.radioAudio.style.display = state.audioBarVisible && !['local','silent'].includes(state.source) ? 'block' : 'none';
+        els.localAudio.style.display = state.audioBarVisible && state.source === 'local' ? 'block' : 'none';
+      });
+
+      ['pointerdown','mousemove','touchstart'].forEach(evt => {
+        window.addEventListener(evt, () => {
+          if (state.clean) showControlsTemporarily();
+        }, { passive: true });
+      });
+
+      window.addEventListener('keydown', async e => {
+        const tag = document.activeElement?.tagName?.toLowerCase();
+        if (['input','select','textarea'].includes(tag)) return;
+        const key = e.key.toLowerCase();
+        if (key === ' ') { e.preventDefault(); if (state.playing) pauseAll(); else await playSelected(); }
+        if (key === 'c' || key === 'h') setClean(!state.clean);
+        if (key === 'f') {
+          if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+          else document.exitFullscreen?.();
+        }
+        if (key === 'r') { await ensureButterchurn(); loadRandomPreset(getBlend()); }
+        if (key === 'n') { await ensureButterchurn(); loadPresetByIndex(state.presetIndex + 1, getBlend()); }
+        if (key === 'a') await toggleAuto();
+      });
+    }
+
+    initApp();
+  </script>
+</body>
+</html>
 
